@@ -26,7 +26,7 @@ npm run preview
 
    アカウント一覧への登録・変更は管理者がSQL Editorから行います。新しいブラウザーセッションの開始時に表示されるボタンから利用アカウントを選びます。選択はタブのセッション中だけ記憶されます。
 4. **Project Settings > API Keys** からProject URLとpublishable keyを取得します。secret keyやservice role keyはブラウザー側で使わないでください。
-5. 開発時は `.env.example` を `.env.local` にコピーし、`VITE_SUPABASE_URL` と `VITE_SUPABASE_PUBLISHABLE_KEY` に取得した値を設定します。
+5. 開発時は `.env.example` を `.env.local` にコピーし、`VITE_SUPABASE_URL` は `https://<project-ref>.supabase.co` のようなProject URLだけにします。`/rest/v1`や`/storage/v1`は付けず、`VITE_SUPABASE_PUBLISHABLE_KEY`にはpublishable keyを設定します。
 6. Vercelの **Project Settings > Environment Variables** に同じ2つの値を登録して再デプロイします。
 
 ### 公開範囲とアカウント選択について
@@ -42,6 +42,10 @@ npm run preview
 1. このプロジェクトをGitHubにpushし、VercelでリポジトリをImportします。
 2. Framework Presetは **Vite**、Build Commandは `npm run build`、Output Directoryは `dist` にします。Install Commandは `npm install` です。
 3. `VITE_SUPABASE_URL` と `VITE_SUPABASE_PUBLISHABLE_KEY` をVercelの環境変数に設定します。Previewデプロイでも接続する場合はPreview環境にも設定します。
+
+### アカウントが表示されない場合
+
+アプリが一覧に使うのはSupabase Authのユーザーや別名のaccountsテーブルではなく、`public.melonpan_accounts`です。Table Editorでこのテーブルに行があるか、SQL Editorで `select id, name from public.melonpan_accounts;` を実行して確認してください。エラーが表示される場合は、Project URLがSupabaseのプロジェクトURLのみであること、publishable keyが正しいプロジェクトのものか、`supabase-schema.sql`を実行済みかを確認します。Vercelの環境変数を変更した後は必ず再デプロイしてください。PWAをインストール済みの場合はアプリを閉じて再度開くか、サイトデータを更新して最新版を読み込んでください。
 
 `VITE_`で始まる値はブラウザーに配信されます。公開用publishable keyだけを設定し、service role keyなどの秘密鍵は設定しないでください。
 

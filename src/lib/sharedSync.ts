@@ -15,7 +15,22 @@ type CloudRecord = {
   updated_at: string
 }
 
-const baseUrl = import.meta.env.VITE_SUPABASE_URL?.replace(/\/$/, '')
+const configuredUrl = import.meta.env.VITE_SUPABASE_URL?.trim()
+const resolveProjectUrl = (value: string | undefined): { url: string | null; error: string | null } => {
+  if (!value) return { url: null, error: 'VITE_SUPABASE_URLが未設定です。' }
+  try {
+    const parsed = new URL(value)
+    if (parsed.protocol !== 'https:' && parsed.hostname !== 'localhost' && parsed.hostname !== '127.0.0.1') {
+      return { url: null, error: 'VITE_SUPABASE_URLはhttpsのSupabase Project URLを指定してください。' }
+    }
+    // Accept a pasted REST/Storage endpoint but always build API routes from the project origin.
+    return { url: parsed.origin, error: null }
+  } catch {
+    return { url: null, error: 'VITE_SUPABASE_URLがURLとして正しくありません。SupabaseのProject URLを確認してください。' }
+  }
+}
+const projectUrl = resolveProjectUrl(configuredUrl)
+const baseUrl = projectUrl.url
 const publishableKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY
 const headers = (): HeadersInit => ({
   apikey: publishableKey ?? '',
@@ -23,22 +38,26 @@ const headers = (): HeadersInit => ({
 })
 const jsonHeaders = (): HeadersInit => ({ ...headers(), 'Content-Type': 'application/json' })
 
-export const isSharedCloudConfigured = (): boolean => Boolean(baseUrl && publishableKey)
+export const isSharedCloudConfigured = (): boolean => Boolean(configuredUrl && publishableKey)
 
 const readResponse = async <T>(response: Response): Promise<T> => {
   const text = await response.text()
-  const body: unknown = text ? JSON.parse(text) : null
+  let body: unknown = null
+  try { body = text ? JSON.parse(text) : null } catch { body = text }
   if (!response.ok) {
     const message = typeof body === 'object' && body !== null && 'message' in body
       ? String(body.message)
-      : `Supabaseとの通信に失敗しました（${response.status}）。`
+      : typeof body === 'string' && body
+        ? `Supabaseとの通信に失敗しました（${response.status}）：${body.slice(0, 240)}`
+        : `Supabaseとの通信に失敗しました（${response.status}）。`
     throw new Error(message)
   }
   return body as T
 }
 
 export async function listSharedAccounts(): Promise<SharedAccount[]> {
-  if (!isSharedCloudConfigured()) return []
+  if (!configuredUrl || !publishableKey) throw new Error('VITE_SUPABASE_URLとVITE_SUPABASE_PUBLISHABLE_KEYを設定してから再デプロイしてください。')
+  if (!baseUrl) throw new Error(projectUrl.error ?? 'Supabase Project URLが正しくありません。')
   const response = await fetch(`${baseUrl}/rest/v1/melonpan_accounts?select=id,name&order=name.asc`, { headers: headers() })
   return readResponse<SharedAccount[]>(response)
 }
@@ -102,22 +121,22 @@ async function removePhoto(path: string): Promise<void> {
 
 export async function syncSharedRecord(record: MelonpanRecord, accountId: string): Promise<void> {
   const photoPath = await uploadPhoto(record, accountId)
-  if (record.photoPath && record.photoPath !== photoPath) await removePhoto(record.photoPath)
   const response = await fetch(`${baseUrl}/rest/v1/melonpan_shared_records?on_conflict=id`, {
     method: 'POST',
     headers: { ...jsonHeaders(), Prefer: 'resolution=merge-duplicates' },
     body: JSON.stringify(toCloudRecord(record, accountId, photoPath)),
   })
   await readResponse<unknown>(response)
+  if (record.photoPath && record.photoPath !== photoPath) await removePhoto(record.photoPath)
 }
 
 export async function deleteSharedRecord(recordId: string, accountId: string): Promise<void> {
-  await removePhoto(`${accountId}/${recordId}`)
   const response = await fetch(
     `${baseUrl}/rest/v1/melonpan_shared_records?id=eq.${encodeURIComponent(recordId)}&account_id=eq.${encodeURIComponent(accountId)}`,
-    { method: 'DELETE', headers: headers() },
+    { method: 'DELETE', headers: { ...headers(), Prefer: 'return=representation' } },
   )
-  await readResponse<unknown>(response)
+  const deleted = await readResponse<Array<{ photo_path: string | null }>>(response)
+  if (deleted[0]?.photo_path) await removePhoto(deleted[0].photo_path)
 }
 
 export async function syncSharedDefinitions(definitions: CustomRatingDefinition[]): Promise<void> {

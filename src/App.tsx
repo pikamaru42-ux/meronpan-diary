@@ -134,14 +134,14 @@ export default function App(){
 
 function mergeData(local:AppData,cloud:AppData):AppData{
  const cloudIds=new Set(cloud.records.map(record=>record.id))
- return {records:[...local.records.filter(record=>!cloudIds.has(record.id)),...cloud.records],definitions:cloud.definitions.length?cloud.definitions:local.definitions}
+ return {records:[...local.records.filter(record=>!record.accountId||record.syncPending&&!cloudIds.has(record.id)),...cloud.records],definitions:cloud.definitions.length?cloud.definitions:local.definitions}
 }
 
 function AccountChooser({accounts,busy,error,onSelect,onRetry,onContinueLocally}:{accounts:SharedAccount[];busy:boolean;error:string;onSelect:(account:SharedAccount)=>void;onRetry:()=>void;onContinueLocally:()=>void}){
  return <main className="mx-auto grid min-h-screen max-w-xl content-center gap-4 px-4 py-8">
   <header className="text-center"><p className="text-5xl">🍈</p><h1 className="mt-3 text-2xl font-black">メロンパン日記</h1><p className="mt-2 text-sm text-[#826e5b]">投稿アカウントを選んでください</p></header>
   {error&&<p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-800">{error}</p>}
-  {accounts.length?accounts.map(account=><button key={account.id} className="btn-main w-full" disabled={busy} onClick={()=>void onSelect(account)}>{account.name}</button>):<section className="card text-sm">アカウントが登録されていません。管理者にSupabaseでアカウントを追加してもらってください。</section>}
+  {accounts.length?accounts.map(account=><button key={account.id} className="btn-main w-full" disabled={busy} onClick={()=>void onSelect(account)}>{account.name}</button>):<section className="card text-sm"><p className="font-bold">アカウント一覧が空です。</p><p className="mt-2">アプリはSupabase Authのユーザー一覧ではなく、Table Editorの <code>public.melonpan_accounts</code> を読み込みます。そこにアカウント行を登録してください。</p><pre className="mt-3 overflow-x-auto rounded-lg bg-[#f7f2e8] p-3 text-xs">select id, name from public.melonpan_accounts;</pre><p className="mt-2">SQL Editorで上の確認SQLを実行し、行が返ることを確認してください。</p></section>}
   {busy&&<p role="status" className="text-center text-sm">共有データを読み込み中…</p>}
   {(error||!accounts.length)&&<button className="btn-sub" onClick={onRetry}>アカウント一覧を再読み込み</button>}
   <button className="btn-sub" disabled={busy} onClick={onContinueLocally}>クラウドを使わず端末内で続ける</button>
