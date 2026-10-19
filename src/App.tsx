@@ -156,7 +156,7 @@ function AccountChooser({accounts,busy,error,onSelect,onRetry,onContinueLocally}
   {busy&&<p role="status" className="text-center text-sm">共有データを読み込み中…</p>}
   {(error||!accounts.length)&&<button className="btn-sub" onClick={onRetry}>アカウント一覧を再読み込み</button>}
   <button className="btn-sub" disabled={busy} onClick={onContinueLocally}>クラウドを使わず端末内で続ける</button>
-  <p className="text-center text-xs text-[#826e5b]">アカウント選択は投稿者の表示用です。本人確認ではありません。</p>
+  <p className="text-center text-xs text-[#826e5b]">アカウント選択は投稿者の表示用です。</p>
  </main>
 }
 
@@ -214,7 +214,7 @@ function Settings({data,visibleRecords,setData,activeAccount,cloudEnabled,onChan
   if(!activeAccount)return
   const unassigned=data.records.filter(record=>!record.accountId)
   if(!unassigned.length){setMessage('未投稿のローカル記録はありません。');return}
-  if(!confirm(`${unassigned.length}件の未投稿記録を「${activeAccount.name}」の投稿として共有します。共有後は全員が閲覧できます。よろしいですか？`))return
+  if(!confirm(`${unassigned.length}件の未投稿記録を「${activeAccount.name}」の投稿として共有します。`))return
   setBusy(true)
   setMessage('')
   try{
@@ -261,7 +261,7 @@ function Settings({data,visibleRecords,setData,activeAccount,cloudEnabled,onChan
   </section>
   <section className="card mt-4"><h2 className="font-bold">バックアップと復元</h2><p className="mt-1 text-sm text-[#826e5b]">表示中のアカウントの記録と設定をJSONに保存します。定期的なバックアップをおすすめします。</p><div className="mt-4 grid gap-2"><button className="btn-main" onClick={exportJson}>表示中アカウントをJSONにエクスポート</button><button className="btn-sub" onClick={()=>download('melonpan-diary.csv',csv(visibleRecords),'text/csv;charset=utf-8')}>表示中アカウントをCSVにエクスポート</button><input ref={input} type="file" accept="application/json,.json" className="hidden" onChange={e=>{const file=e.target.files?.[0];if(file)void importJson(file)}}/><button className="btn-sub" onClick={()=>input.current?.click()}>JSONから復元</button></div></section>
   <section className="card mt-4"><h2 className="font-bold">サンプルデータ</h2><p className="mt-1 text-sm text-[#826e5b]">操作を試すための2件の記録です。</p><div className="mt-3"><button className="btn-sub w-full" onClick={async()=>{if(confirm('サンプルデータを追加しますか？')){const added=sample().map(record=>({...record,accountId:undefined}));const next={...data,records:[...data.records,...added]};await saveData(next);setData(next)}}}>投入する</button></div></section>
-  {activeAccount&&<section className="card mt-4"><h2 className="font-bold">共有アカウント</h2><p className="mt-1 text-sm text-[#826e5b]">選択中：{activeAccount.name}。アカウントを押し直すと切り替わります。アカウント選択は本人確認ではありません。</p><button className="btn-sub mt-3 w-full" disabled={busy} onClick={()=>void onRefreshShared()}>共有データを再読み込み</button><button className="btn-sub mt-2 w-full" onClick={onChangeAccount}>アカウントを切り替える</button><button className="btn-main mt-2 w-full" disabled={busy} onClick={()=>void publishLocalRecords()}>未投稿のローカル記録を共有する（{data.records.filter(record=>!record.accountId).length}件）</button><button className="btn-sub mt-2 w-full" disabled={busy} onClick={()=>void retryPendingRecords()}>失敗した投稿を再送信する（{data.records.filter(record=>record.accountId===activeAccount.id&&record.syncPending).length}件）</button>{message&&<p role="status" className="mt-3 text-sm text-[#76563a]">{message}</p>}<p className="mt-3 text-xs text-[#826e5b]">共有した記録・写真は公開されます。ログインなしのため、他人がこのアカウント名を選んで投稿・編集することを技術的には防げません。</p></section>}
+  {activeAccount&&<section className="card mt-4"><h2 className="font-bold">共有アカウント</h2><p className="mt-1 text-sm text-[#826e5b]">選択中：{activeAccount.name}。アカウントを押し直すと切り替わります。</p><button className="btn-sub mt-3 w-full" disabled={busy} onClick={()=>void onRefreshShared()}>共有データを再読み込み</button><button className="btn-sub mt-2 w-full" onClick={onChangeAccount}>アカウントを切り替える</button><button className="btn-main mt-2 w-full" disabled={busy} onClick={()=>void publishLocalRecords()}>未投稿のローカル記録を共有する（{data.records.filter(record=>!record.accountId).length}件）</button><button className="btn-sub mt-2 w-full" disabled={busy} onClick={()=>void retryPendingRecords()}>失敗した投稿を再送信する（{data.records.filter(record=>record.accountId===activeAccount.id&&record.syncPending).length}件）</button>{message&&<p role="status" className="mt-3 text-sm text-[#76563a]">{message}</p>}<p className="mt-3 text-xs text-[#826e5b]"></p></section>}
   {!activeAccount&&<section className="card mt-4"><h2 className="font-bold">クラウド共有</h2><p className="mt-2 text-sm text-[#826e5b]">{cloudEnabled?'共有データを使うにはアカウントを選択してください。現在はこの端末だけに保存されています。':'Supabase未設定のため、現在はこの端末だけに保存されています。'}</p></section>}
  </>
 }
