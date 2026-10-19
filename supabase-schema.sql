@@ -21,12 +21,14 @@ create table if not exists public.melonpan_shared_records (
   updated_at timestamptz not null
 );
 
-create table if not exists public.melonpan_shared_rating_definitions (
-  id uuid primary key,
+create table if not exists public.melonpan_account_rating_definitions (
+  id text not null,
+  account_id uuid not null references public.melonpan_accounts(id) on delete cascade,
   label text not null,
   display_order integer not null,
   enabled boolean not null default true,
-  updated_at timestamptz not null default now()
+  updated_at timestamptz not null default now(),
+  primary key (account_id, id)
 );
 
 create index if not exists melonpan_shared_records_account_id_idx
@@ -34,7 +36,7 @@ create index if not exists melonpan_shared_records_account_id_idx
 
 alter table public.melonpan_accounts enable row level security;
 alter table public.melonpan_shared_records enable row level security;
-alter table public.melonpan_shared_rating_definitions enable row level security;
+alter table public.melonpan_account_rating_definitions enable row level security;
 
 drop policy if exists "public read melonpan accounts" on public.melonpan_accounts;
 create policy "public read melonpan accounts" on public.melonpan_accounts
@@ -44,12 +46,12 @@ drop policy if exists "public shared melonpan records" on public.melonpan_shared
 create policy "public shared melonpan records" on public.melonpan_shared_records
   for all to anon, authenticated using (true) with check (true);
 
-drop policy if exists "public shared melonpan rating definitions" on public.melonpan_shared_rating_definitions;
-create policy "public shared melonpan rating definitions" on public.melonpan_shared_rating_definitions
+drop policy if exists "public shared melonpan account rating definitions" on public.melonpan_account_rating_definitions;
+create policy "public shared melonpan account rating definitions" on public.melonpan_account_rating_definitions
   for all to anon, authenticated using (true) with check (true);
 
 grant select on public.melonpan_accounts to anon, authenticated;
-grant select, insert, update, delete on public.melonpan_shared_records, public.melonpan_shared_rating_definitions to anon, authenticated;
+grant select, insert, update, delete on public.melonpan_shared_records, public.melonpan_account_rating_definitions to anon, authenticated;
 
 insert into storage.buckets (id, name, public)
 values ('melonpan-shared-photos', 'melonpan-shared-photos', true)

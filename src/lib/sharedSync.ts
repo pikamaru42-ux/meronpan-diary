@@ -139,26 +139,28 @@ export async function deleteSharedRecord(recordId: string, accountId: string): P
   if (deleted[0]?.photo_path) await removePhoto(deleted[0].photo_path)
 }
 
-export async function syncSharedDefinitions(definitions: CustomRatingDefinition[]): Promise<void> {
-  const base = `${baseUrl}/rest/v1/melonpan_shared_rating_definitions`
-  const existingResponse = await fetch(`${base}?select=id`, { headers: headers() })
+export async function syncSharedDefinitions(definitions: CustomRatingDefinition[], accountId: string): Promise<void> {
+  const base = `${baseUrl}/rest/v1/melonpan_account_rating_definitions`
+  const accountFilter = `account_id=eq.${encodeURIComponent(accountId)}`
+  const existingResponse = await fetch(`${base}?select=id&${accountFilter}`, { headers: headers() })
   const existing = await readResponse<Array<{ id: string }>>(existingResponse)
   const retainedIds = new Set(definitions.map(definition => definition.id))
   for (const definition of existing) {
     if (!retainedIds.has(definition.id)) {
-      const response = await fetch(`${base}?id=eq.${encodeURIComponent(definition.id)}`, { method: 'DELETE', headers: headers() })
+      const response = await fetch(`${base}?id=eq.${encodeURIComponent(definition.id)}&${accountFilter}`, { method: 'DELETE', headers: headers() })
       await readResponse<unknown>(response)
     }
   }
   const rows = definitions.map(definition => ({
     id: definition.id,
+    account_id: accountId,
     label: definition.label,
     display_order: definition.order,
     enabled: definition.enabled,
     updated_at: new Date().toISOString(),
   }))
   if (!rows.length) return
-  const response = await fetch(`${base}?on_conflict=id`, {
+  const response = await fetch(`${base}?on_conflict=account_id,id`, {
     method: 'POST',
     headers: { ...jsonHeaders(), Prefer: 'resolution=merge-duplicates' },
     body: JSON.stringify(rows),
@@ -166,10 +168,10 @@ export async function syncSharedDefinitions(definitions: CustomRatingDefinition[
   await readResponse<unknown>(response)
 }
 
-export async function loadSharedData(): Promise<AppData> {
+export async function loadSharedData(accountId: string): Promise<AppData> {
   const [recordResponse, definitionResponse] = await Promise.all([
-    fetch(`${baseUrl}/rest/v1/melonpan_shared_records?select=*&order=eaten_at.desc`, { headers: headers() }),
-    fetch(`${baseUrl}/rest/v1/melonpan_shared_rating_definitions?select=*&order=display_order.asc`, { headers: headers() }),
+    fetch(`${baseUrl}/rest/v1/melonpan_shared_records?select=*&account_id=eq.${encodeURIComponent(accountId)}&order=eaten_at.desc`, { headers: headers() }),
+    fetch(`${baseUrl}/rest/v1/melonpan_account_rating_definitions?select=*&account_id=eq.${encodeURIComponent(accountId)}&order=display_order.asc`, { headers: headers() }),
   ])
   const records = await readResponse<CloudRecord[]>(recordResponse)
   const definitions = await readResponse<Array<{ id: string; label: string; display_order: number; enabled: boolean }>>(definitionResponse)

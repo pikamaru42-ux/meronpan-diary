@@ -42,9 +42,9 @@ export default function App(){
    try{savedAccountId=sessionStorage.getItem('melonpan-selected-account')}catch{savedAccountId=null}
    const remembered=availableAccounts.find(account=>account.id===savedAccountId)
    if(remembered){
-    const cloudData=await loadSharedData()
+    const cloudData=await loadSharedData(remembered.id)
     if(!mounted)return
-    const merged=mergeData(localData,cloudData)
+    const merged=mergeData(localData,cloudData,remembered.id)
     await saveData(merged)
     setData(merged)
     setActiveAccount(remembered)
@@ -65,8 +65,8 @@ export default function App(){
   setAccountBusy(true)
   setStartupError('')
   try{
-   const cloudData=await loadSharedData()
-   const merged=mergeData(await loadData(),cloudData)
+   const cloudData=await loadSharedData(account.id)
+   const merged=mergeData(await loadData(),cloudData,account.id)
    await saveData(merged)
    setData(merged)
    try{sessionStorage.setItem('melonpan-selected-account',account.id)}catch{setStartupError('このタブでは選択状態を保存できません。ページを開いている間は利用できます。')}
@@ -80,11 +80,14 @@ export default function App(){
   try{await syncSharedRecord(record,accountId);setSyncError('');return true}
   catch(error:unknown){setSyncError(error instanceof Error?error.message:'クラウドへの投稿に失敗しました。');return false}
  }
- const syncDefinitions=(definitions:CustomRatingDefinition[])=>syncSharedDefinitions(definitions).then(()=>setSyncError('')).catch((error:unknown)=>setSyncError(error instanceof Error?error.message:'評価項目の同期に失敗しました。'))
+ const syncDefinitions=(definitions:CustomRatingDefinition[])=>activeAccount
+  ?syncSharedDefinitions(definitions,activeAccount.id).then(()=>setSyncError('')).catch((error:unknown)=>setSyncError(error instanceof Error?error.message:'評価項目の同期に失敗しました。'))
+  :Promise.resolve()
  const refreshShared=async()=>{
   try{
-   const remote=await loadSharedData()
-   const merged=mergeData(await loadData(),remote)
+   if(!activeAccount)return
+   const remote=await loadSharedData(activeAccount.id)
+   const merged=mergeData(await loadData(),remote,activeAccount.id)
    await saveData(merged)
    setData(merged)
    setSyncError('')
@@ -93,14 +96,22 @@ export default function App(){
  const changeAccount=()=>{try{sessionStorage.removeItem('melonpan-selected-account')}catch{};setActiveAccount(null);setPage('list');setStartupError('')}
  const continueLocally=()=>{setActiveAccount(null);setLocalOnly(true);setPage('list')}
  const canModifyRecord=(record:MelonpanRecord)=>activeAccount?record.accountId===activeAccount.id:!cloudEnabled||!record.accountId
+ const visibleData=useMemo(()=>({
+  ...data,
+  records:activeAccount
+   ?data.records.filter(record=>record.accountId===activeAccount.id)
+   :localOnly&&cloudEnabled
+    ?data.records.filter(record=>!record.accountId)
+    :data.records,
+ }),[data,activeAccount,localOnly,cloudEnabled])
 
  if(!ready)return <main className="grid min-h-screen place-items-center text-bread">焼きたてを準備中…</main>
  if(cloudEnabled&&!activeAccount&&!localOnly)return <AccountChooser accounts={accounts} busy={accountBusy} error={startupError} onSelect={selectAccount} onRetry={()=>window.location.reload()} onContinueLocally={continueLocally}/>
  return <main className="mx-auto min-h-screen max-w-xl px-4 pb-24 pt-5">
   {(activeAccount||localOnly)&&<section className="card mb-4 flex items-center justify-between gap-3 py-3"><p className="text-sm">{activeAccount?<>投稿アカウント：<strong>{activeAccount.name}</strong></>:'端末内のみで利用中'}</p>{activeAccount?<button className="btn-sub shrink-0" onClick={changeAccount}>切り替え</button>:<button className="btn-sub shrink-0" onClick={()=>setLocalOnly(false)}>共有アカウントを選ぶ</button>}</section>}
   {syncError&&<p role="alert" className="mb-3 rounded-xl bg-red-50 p-3 text-sm text-red-800">クラウド同期に失敗しました。記録はこの端末に保存されています。{syncError}</p>}
-  {page==='list'&&<List records={data.records} accounts={accounts} onOpen={openRecord} onAdd={()=>go('form')}/>}
-  {page==='form'&&<Form record={editing??newRecord()} definitions={data.definitions} onCancel={()=>setPage('list')} onSave={async r=>{
+  {page==='list'&&<List records={visibleData.records} accounts={accounts} onOpen={openRecord} onAdd={()=>go('form')}/>}
+  {page==='form'&&<Form record={editing??newRecord()} definitions={visibleData.definitions} onCancel={()=>setPage('list')} onSave={async r=>{
    const saved={...r,accountId:activeAccount?.id??r.accountId,syncPending:Boolean(activeAccount)}
    const d=await saveRecord(saved)
    persist(d)
@@ -112,7 +123,7 @@ export default function App(){
    setSelected(saved.id)
    setPage('detail')
   }}/>}
-  {page==='detail'&&<><Detail record={data.records.find(r=>r.id===selected)} all={data.records} definitions={data.definitions} canEdit={data.records.some(r=>r.id===selected&&canModifyRecord(r))} onBack={()=>setPage('list')} onEdit={r=>{
+  {page==='detail'&&<><Detail record={visibleData.records.find(r=>r.id===selected)} all={visibleData.records} definitions={visibleData.definitions} canEdit={visibleData.records.some(r=>r.id===selected&&canModifyRecord(r))} onBack={()=>setPage('list')} onEdit={r=>{
    if(!canModifyRecord(r)){setSyncError('選択中アカウントの記録だけ編集できます。');return}
    setEditing(r);setPage('form')
   }} onDelete={async r=>{
@@ -125,16 +136,16 @@ export default function App(){
     persist(await deleteRecord(r.id))
     setPage('list')
    }
-  }} onOpen={openRecord}/><p className="mt-3 text-center text-sm text-[#826e5b]">投稿者：{accounts.find(account=>account.id===data.records.find(record=>record.id===selected)?.accountId)?.name??'ローカル記録'}</p></>}
-  {page==='stats'&&<Stats records={data.records}/>}
-  {page==='settings'&&<Settings data={data} setData={persist} activeAccount={activeAccount} cloudEnabled={cloudEnabled} onChangeAccount={changeAccount} onRefreshShared={refreshShared} onSyncRecord={syncRecord} onSyncDefinitions={syncDefinitions} onSyncError={setSyncError}/>}
+  }} onOpen={openRecord}/><p className="mt-3 text-center text-sm text-[#826e5b]">投稿者：{accounts.find(account=>account.id===visibleData.records.find(record=>record.id===selected)?.accountId)?.name??'ローカル記録'}</p></>}
+  {page==='stats'&&<Stats records={visibleData.records}/>}
+  {page==='settings'&&<Settings data={data} visibleRecords={visibleData.records} setData={persist} activeAccount={activeAccount} cloudEnabled={cloudEnabled} onChangeAccount={changeAccount} onRefreshShared={refreshShared} onSyncRecord={syncRecord} onSyncDefinitions={syncDefinitions} onSyncError={setSyncError}/>}
   <Nav page={page} go={go}/>
  </main>
 }
 
-function mergeData(local:AppData,cloud:AppData):AppData{
+function mergeData(local:AppData,cloud:AppData,accountId:string):AppData{
  const cloudIds=new Set(cloud.records.map(record=>record.id))
- return {records:[...local.records.filter(record=>!record.accountId||record.syncPending&&!cloudIds.has(record.id)),...cloud.records],definitions:cloud.definitions.length?cloud.definitions:local.definitions}
+ return {records:[...local.records.filter(record=>record.accountId!==accountId||record.syncPending&&!cloudIds.has(record.id)),...cloud.records],definitions:cloud.definitions.length?cloud.definitions:DEFAULT_DEFINITIONS}
 }
 
 function AccountChooser({accounts,busy,error,onSelect,onRetry,onContinueLocally}:{accounts:SharedAccount[];busy:boolean;error:string;onSelect:(account:SharedAccount)=>void;onRetry:()=>void;onContinueLocally:()=>void}){
@@ -178,7 +189,7 @@ function Detail({record,all,definitions,canEdit,onBack,onEdit,onDelete,onOpen}:{
 function Stats({records}:{records:MelonpanRecord[]}){const [month,setMonth]=useState(monthNow());const [allTime,setAllTime]=useState(false);const [prompt,setPrompt]=useState('');const selected=allTime?records:records.filter(r=>r.eatenAt.startsWith(month));const s=summary(selected);const months=Array.from({length:6},(_,i)=>{const d=new Date();d.setMonth(d.getMonth()-5+i);return d.toISOString().slice(0,7)});const counts=months.map(m=>records.filter(r=>r.eatenAt.startsWith(m)).length);const max=Math.max(...counts,1);useEffect(()=>setPrompt(aiPrompt(selected,allTime?'全期間':`${month.replace('-','年')}月`)),[month,allTime,records]);return <><header className="mb-4"><p className="text-sm text-[#8b735d]">振り返ると、次の一個がもっと楽しみ。</p><h1 className="text-3xl font-black">月別集計</h1></header><section className="card"><div className="flex items-center gap-3"><label className="flex-1 text-sm font-bold">対象月<input className="field" type="month" value={month} disabled={allTime} onChange={e=>setMonth(e.target.value)}/></label><label className="mt-6 flex items-center gap-2 text-sm"><input type="checkbox" checked={allTime} onChange={e=>setAllTime(e.target.checked)}/>全期間</label></div>{!selected.length?<p className="py-8 text-center text-[#826e5b]">この期間の記録はまだありません。<br/>追加すると、おいしい傾向が見えてきます。</p>:<><div className="mt-4 grid grid-cols-2 gap-3"><div className="rounded-2xl bg-custard p-3"><p className="text-xs">食べた個数</p><p className="text-3xl font-black">{s.count}<span className="text-sm"> 個</span></p></div><div className="rounded-2xl bg-[#eef3d8] p-3"><p className="text-xs">平均総合評価</p><p className="text-3xl font-black">{s.average.toFixed(1)}<span className="text-sm"> / 5</span></p></div></div><Rank title="よく行った店" values={s.shops}/><Rank title="よく使ったタグ" values={s.tags} tag/><section className="mt-5"><h2 className="font-bold">高評価メロンパン</h2>{s.top.map((r,i)=><div key={r.id} className="mt-2 flex justify-between rounded-xl bg-[#fffcf4] p-2 text-sm"><span>{i+1}. {r.productName} <small>({r.shop})</small></span><b className="text-[#d49a25]">★ {r.overallRating}</b></div>)}</section></>}</section><section className="card mt-4"><h2 className="font-bold">月ごとの個数推移</h2><div className="mt-4 flex h-32 items-end justify-between gap-2">{months.map((m,i)=><div key={m} className="flex h-full flex-1 flex-col justify-end text-center"><span className="text-xs">{counts[i]}</span><div className="rounded-t-md bg-melon" style={{height:`${counts[i]/max*90}%`,minHeight:counts[i]?'5px':'0'}}/><small className="mt-1 text-[10px]">{m.slice(5)}月</small></div>)}</div></section><section className="card mt-4"><h2 className="font-bold">AIに渡す要約文</h2><p className="mt-1 text-xs text-[#826e5b]">データは自動送信されません。コピーしてご自身で貼り付けた時だけAIサービスに共有されます。</p><textarea className="field min-h-56 text-sm" value={prompt} onChange={e=>setPrompt(e.target.value)}/><div className="mt-3 grid grid-cols-3 gap-2"><button className="btn-main" onClick={()=>navigator.clipboard.writeText(prompt)}>コピー</button><button className="btn-sub" onClick={async()=>{await navigator.clipboard.writeText(prompt);window.open('https://chatgpt.com/','_blank','noopener,noreferrer')}}>ChatGPTで開く</button><button className="btn-sub" onClick={async()=>{await navigator.clipboard.writeText(prompt);window.open('https://gemini.google.com/','_blank','noopener,noreferrer')}}>Geminiで開く</button></div></section></>}
 function Rank({title,values,tag=false}:{title:string;values:[string,number][];tag?:boolean}){return <section className="mt-5"><h2 className="font-bold">{title}</h2>{values.slice(0,5).map(([n,c],i)=><div className="mt-2 flex justify-between text-sm" key={n}><span>{i+1}. {tag?'#':''}{n}</span><b>{c}件</b></div>)}</section>}
 
-function Settings({data,setData,activeAccount,cloudEnabled,onChangeAccount,onRefreshShared,onSyncRecord,onSyncDefinitions,onSyncError}:{data:AppData;setData:(d:AppData)=>void;activeAccount:SharedAccount|null;cloudEnabled:boolean;onChangeAccount:()=>void;onRefreshShared:()=>Promise<void>;onSyncRecord:(record:MelonpanRecord,accountId:string)=>Promise<boolean>;onSyncDefinitions:(definitions:CustomRatingDefinition[])=>Promise<void>;onSyncError:(message:string)=>void}){
+function Settings({data,visibleRecords,setData,activeAccount,cloudEnabled,onChangeAccount,onRefreshShared,onSyncRecord,onSyncDefinitions,onSyncError}:{data:AppData;visibleRecords:MelonpanRecord[];setData:(d:AppData)=>void;activeAccount:SharedAccount|null;cloudEnabled:boolean;onChangeAccount:()=>void;onRefreshShared:()=>Promise<void>;onSyncRecord:(record:MelonpanRecord,accountId:string)=>Promise<boolean>;onSyncDefinitions:(definitions:CustomRatingDefinition[])=>Promise<void>;onSyncError:(message:string)=>void}){
  const [label,setLabel]=useState('')
  const [message,setMessage]=useState('')
  const [busy,setBusy]=useState(false)
@@ -188,7 +199,7 @@ function Settings({data,setData,activeAccount,cloudEnabled,onChangeAccount,onRef
   setData(updated)
   if(activeAccount)await onSyncDefinitions(definitions)
  }
- const exportJson=()=>download(`melonpan-diary-${new Date().toISOString().slice(0,10)}.json`,JSON.stringify(data,null,2),'application/json')
+ const exportJson=()=>download(`melonpan-diary-${new Date().toISOString().slice(0,10)}.json`,JSON.stringify({...data,records:visibleRecords},null,2),'application/json')
  const importJson=async(file:File)=>{
   try{
    const parsed=parseBackup(JSON.parse(await file.text()))
@@ -209,7 +220,7 @@ function Settings({data,setData,activeAccount,cloudEnabled,onChangeAccount,onRef
   try{
    const assigned=unassigned.map(record=>({...record,accountId:activeAccount.id}))
    for(const record of assigned)await syncSharedRecord(record,activeAccount.id)
-   await syncSharedDefinitions(data.definitions)
+   await syncSharedDefinitions(data.definitions,activeAccount.id)
    const assignedIds=new Set(assigned.map(record=>record.id))
    const next={...data,records:data.records.map(record=>assignedIds.has(record.id)?{...record,accountId:activeAccount.id}:record)}
    await saveData(next)
@@ -248,7 +259,7 @@ function Settings({data,setData,activeAccount,cloudEnabled,onChangeAccount,onRef
    <div className="mt-3 space-y-2">{[...data.definitions].sort((a,b)=>a.order-b.order).map(d=><div className="flex items-center gap-2" key={d.id}><input className="h-5 w-5" aria-label={`${d.label}を有効にする`} type="checkbox" checked={d.enabled} onChange={e=>void changeDefs(data.definitions.map(x=>x.id===d.id?{...x,enabled:e.target.checked}:x))}/><span className="flex-1">{d.label}</span><button className="text-sm text-red-700" onClick={()=>void changeDefs(data.definitions.filter(x=>x.id!==d.id))}>削除</button></div>)}</div>
    <div className="mt-3 flex gap-2"><input className="field mt-0" value={label} maxLength={30} onChange={e=>setLabel(e.target.value)} placeholder="例：香り"/><button className="btn-sub shrink-0" onClick={()=>{const value=label.trim();if(value){void changeDefs([...data.definitions,{id:id(),label:value,order:data.definitions.length,enabled:true}]);setLabel('')}}}>追加</button></div>
   </section>
-  <section className="card mt-4"><h2 className="font-bold">バックアップと復元</h2><p className="mt-1 text-sm text-[#826e5b]">データは端末内にも保存されます。定期的なJSONバックアップをおすすめします。</p><div className="mt-4 grid gap-2"><button className="btn-main" onClick={exportJson}>JSONをエクスポート（写真・設定を含む）</button><button className="btn-sub" onClick={()=>download('melonpan-diary.csv',csv(data.records),'text/csv;charset=utf-8')}>CSVをエクスポート</button><input ref={input} type="file" accept="application/json,.json" className="hidden" onChange={e=>{const file=e.target.files?.[0];if(file)void importJson(file)}}/><button className="btn-sub" onClick={()=>input.current?.click()}>JSONから復元</button></div></section>
+  <section className="card mt-4"><h2 className="font-bold">バックアップと復元</h2><p className="mt-1 text-sm text-[#826e5b]">表示中のアカウントの記録と設定をJSONに保存します。定期的なバックアップをおすすめします。</p><div className="mt-4 grid gap-2"><button className="btn-main" onClick={exportJson}>表示中アカウントをJSONにエクスポート</button><button className="btn-sub" onClick={()=>download('melonpan-diary.csv',csv(visibleRecords),'text/csv;charset=utf-8')}>表示中アカウントをCSVにエクスポート</button><input ref={input} type="file" accept="application/json,.json" className="hidden" onChange={e=>{const file=e.target.files?.[0];if(file)void importJson(file)}}/><button className="btn-sub" onClick={()=>input.current?.click()}>JSONから復元</button></div></section>
   <section className="card mt-4"><h2 className="font-bold">サンプルデータ</h2><p className="mt-1 text-sm text-[#826e5b]">操作を試すための2件の記録です。</p><div className="mt-3"><button className="btn-sub w-full" onClick={async()=>{if(confirm('サンプルデータを追加しますか？')){const added=sample().map(record=>({...record,accountId:undefined}));const next={...data,records:[...data.records,...added]};await saveData(next);setData(next)}}}>投入する</button></div></section>
   {activeAccount&&<section className="card mt-4"><h2 className="font-bold">共有アカウント</h2><p className="mt-1 text-sm text-[#826e5b]">選択中：{activeAccount.name}。アカウントを押し直すと切り替わります。アカウント選択は本人確認ではありません。</p><button className="btn-sub mt-3 w-full" disabled={busy} onClick={()=>void onRefreshShared()}>共有データを再読み込み</button><button className="btn-sub mt-2 w-full" onClick={onChangeAccount}>アカウントを切り替える</button><button className="btn-main mt-2 w-full" disabled={busy} onClick={()=>void publishLocalRecords()}>未投稿のローカル記録を共有する（{data.records.filter(record=>!record.accountId).length}件）</button><button className="btn-sub mt-2 w-full" disabled={busy} onClick={()=>void retryPendingRecords()}>失敗した投稿を再送信する（{data.records.filter(record=>record.accountId===activeAccount.id&&record.syncPending).length}件）</button>{message&&<p role="status" className="mt-3 text-sm text-[#76563a]">{message}</p>}<p className="mt-3 text-xs text-[#826e5b]">共有した記録・写真は公開されます。ログインなしのため、他人がこのアカウント名を選んで投稿・編集することを技術的には防げません。</p></section>}
   {!activeAccount&&<section className="card mt-4"><h2 className="font-bold">クラウド共有</h2><p className="mt-2 text-sm text-[#826e5b]">{cloudEnabled?'共有データを使うにはアカウントを選択してください。現在はこの端末だけに保存されています。':'Supabase未設定のため、現在はこの端末だけに保存されています。'}</p></section>}
