@@ -11,6 +11,7 @@ create table if not exists public.melonpan_shared_records (
   account_id uuid not null references public.melonpan_accounts(id),
   eaten_at date not null,
   shop text not null default '',
+  amount integer check (amount is null or amount >= 0),
   product_name text not null,
   photo_path text,
   overall_rating smallint not null check (overall_rating between 1 and 5),
@@ -20,6 +21,9 @@ create table if not exists public.melonpan_shared_records (
   created_at timestamptz not null,
   updated_at timestamptz not null
 );
+
+alter table public.melonpan_shared_records
+  add column if not exists amount integer check (amount is null or amount >= 0);
 
 create table if not exists public.melonpan_account_rating_definitions (
   id text not null,

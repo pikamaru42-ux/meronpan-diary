@@ -47,8 +47,12 @@ npm run preview
 
 アプリが一覧に使うのはSupabase Authのユーザーや別名のaccountsテーブルではなく、`public.melonpan_accounts`です。Table Editorでこのテーブルに行があるか、SQL Editorで `select id, name from public.melonpan_accounts;` を実行して確認してください。エラーが表示される場合は、Project URLがSupabaseのプロジェクトURLのみであること、publishable keyが正しいプロジェクトのものか、`supabase-schema.sql`を実行済みかを確認します。Vercelの環境変数を変更した後は必ず再デプロイしてください。PWAをインストール済みの場合はアプリを閉じて再度開くか、サイトデータを更新して最新版を読み込んでください。
 
+### `melonpan_account_rating_definitions` がschema cacheにない場合
+
+新しいアカウント別評価項目テーブルがSupabase側に未作成です。Supabase Dashboardの **SQL Editor** で `supabase-migration-account-rating-definitions.sql` の内容を実行してください。テーブル・RLS・権限を設定し、PostgRESTのschema cacheを再読み込みします。SQL実行後も同じエラーが続く場合は、Supabase Dashboardで正しいプロジェクトを開いていることを確認し、SQL Editorで `select to_regclass('public.melonpan_account_rating_definitions');` を実行してください。テーブル名が返るのにAPIエラーが続く場合は、Supabaseの **Project Settings > API > Reload schema cache**（またはSQL Editorで `notify pgrst, 'reload schema';`）を実行してください。
+
 `VITE_`で始まる値はブラウザーに配信されます。公開用publishable keyだけを設定し、service role keyなどの秘密鍵は設定しないでください。
 
 ## データとバックアップ
 
-記録と選択した写真はIndexedDBにも保存されます。JSONエクスポートには記録・写真・設定が含まれ、復元に使えます。CSVは表計算ソフト向けのUTF-8 BOM付きです。`public/sw.js` と `public/manifest.webmanifest` によりホーム画面へ追加でき、読み込んだアプリ資産はオフラインでも利用できます。クラウドへの読み書きにはインターネット接続が必要です。
+記録には店名や任意の金額も入力でき、端末のIndexedDBと共有アカウントのクラウドに保存されます。JSONエクスポートには表示中のアカウントの記録・写真・設定が含まれ、復元に使えます。`public/sw.js` と `public/manifest.webmanifest` によりホーム画面へ追加でき、読み込んだアプリ資産はオフラインでも利用できます。クラウドへの読み書きにはインターネット接続が必要です。

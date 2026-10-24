@@ -5,6 +5,7 @@ type CloudRecord = {
   account_id: string | null
   eaten_at: string
   shop: string
+  amount: number | null
   product_name: string
   photo_path: string | null
   overall_rating: RatingValue
@@ -45,6 +46,9 @@ const readResponse = async <T>(response: Response): Promise<T> => {
   let body: unknown = null
   try { body = text ? JSON.parse(text) : null } catch { body = text }
   if (!response.ok) {
+    if (typeof body === 'object' && body !== null && 'code' in body && body.code === 'PGRST205') {
+      throw new Error('Supabaseに必要なテーブルがありません。supabase-migration-account-rating-definitions.sqlをSQL Editorで実行し、スキーマキャッシュを再読み込みしてください。')
+    }
     const message = typeof body === 'object' && body !== null && 'message' in body
       ? String(body.message)
       : typeof body === 'string' && body
@@ -67,6 +71,7 @@ const toCloudRecord = (record: MelonpanRecord, accountId: string, photoPath: str
   account_id: accountId,
   eaten_at: record.eatenAt,
   shop: record.shop,
+  amount: record.amount ?? null,
   product_name: record.productName,
   photo_path: photoPath,
   overall_rating: record.overallRating,
@@ -85,6 +90,7 @@ const toLocalRecord = (record: CloudRecord): MelonpanRecord => ({
   accountId: record.account_id ?? undefined,
   eatenAt: record.eaten_at,
   shop: record.shop,
+  amount: record.amount ?? undefined,
   productName: record.product_name,
   photo: record.photo_path ? publicPhotoUrl(record.photo_path) : undefined,
   photoPath: record.photo_path ?? undefined,
